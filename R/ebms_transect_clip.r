@@ -175,6 +175,7 @@ text(1818716,3891651,paste('transect:',length(unique(section_sf$transect_id[!is.
 
 b_res <- data.table::data.table()
 f <- data.table::data.table()
+
 for (cel_n in seq_along(gr)){
 
 plot(gr, col = NA, border = 'orange')
@@ -188,13 +189,13 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
   grid_data <- data.table::data.table(grid_data)
   grid_data[, year_trans_sect := paste(year, transect_id, section_id, sep='_')]
 
-  for (tr_length in c(100,150,200,250,300,350,450,500)){
+  for (tr_length in c(100,150,200,250,300,350)){
 
     transect_length <- grid_data[, sum(est_section_length, na.rm=TRUE), by =  c('year', 'transect_id')]
     tr_k <- transect_length[V1 >= (tr_length - tolerance), transect_id]
     grid_data_gr <- grid_data[transect_id %in% tr_k, section_id[transect_splitter(est_section_length, tr_length)], by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')]
     b <- data.table::copy(grid_data[paste(year, transect_id, section_id, sep='_') %in% grid_data_gr$year_trans_sect,])
-    b[, 'transect_split' := paste('tr', 1, tr_length, sep = '_')]
+    b[, 'transect_split' := paste(tr_length, 'tr', 1, sep = '_')]
     b[, gr_section_length := sum(est_section_length,na.rm = TRUE), by = c('year', 'transect_id')]
 
     (added_to <- b[,.N] )
@@ -233,6 +234,7 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
 
 saveRDS(b_res,'output/section_merging.rds')
 
+#### End
 
 plot(
 f2 <- f[,mean(V1),by=.(tr_length,grid_cell)]
