@@ -65,6 +65,7 @@ g.bbox <- raster::extent(2500000,5500000,1400000,5100000)
 g.bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(g.bbox, 'SpatialPolygons')), 3035)
 gr <- sf::st_make_grid(g.bbox_sf, cellsize = 250000, what = 'polygons')
 
+dev.new()
 plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90')
 plot(section_sf$geometry[!is.na(section_sf$est_section_length)], pch = 20, cex = 0.8, col = 'cadetblue', add = TRUE)
 text(1818716,4231836,paste('section:',length(unique(section_sf$site_id[!is.na(section_sf$est_section_length)]))),pos=4)
@@ -83,18 +84,22 @@ plot(gr[89], col = NA, border = 'red', lwd=2, add = TRUE)
 gr.section <- unlist(sf::st_intersects(gr[89],section_sf))
 plot(section_sf$geometry[gr.section], pch = 20, cex = 0.8, col = 'orange', add = TRUE)
 
+plot(gr[88], col = NA, border = 'red', lwd=2, add = TRUE)
+gr.section <- unlist(sf::st_intersects(gr[88],section_sf))
+plot(section_sf$geometry[gr.section], pch = 20, cex = 0.8, col = 'orange', add = TRUE)
 
-gr.section <- unlist(sf::st_intersects(gr[79],section_sf))
+
+## focus on a small box (eg. 79)
+cel_n <- 88
+gr.section <- unlist(sf::st_intersects(gr[cel_n],section_sf))
 dev.new()
-plot(gr[79], col = NA, border = 'red', lwd=2, type='n')
+plot(gr[cel_n], col = NA, border = 'red', lwd=2, type='n')
 plot(sf_e_clip$geometry, col='grey90', add = TRUE)
-plot(gr[79], col = NA, border = 'red', lwd=2, add = TRUE)
+plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
 plot(section_sf$geometry[gr.section], pch = 20, cex = 0.8, col = 'cadetblue', add = TRUE)
 
-cel_n <- 89
-## focus on a small box (eg. 79)
 gr.50 <- sf::st_make_grid(g.bbox_sf, cellsize = 50000, what = 'polygons')
-gr.50_sub <- unlist(sf::st_intersects(gr[cel_n],gr.50))
+gr.50_sub <- unlist(sf::st_intersects(sf::st_buffer(gr[cel_n],-2),gr.50))
 plot(gr.50[gr.50_sub],col = NA, border = 'orange', lty=3, lwd=1, add = TRUE)
 
 large_grid_section <- section_sf[gr.section,]
@@ -109,6 +114,8 @@ for (i in  seq_along(a)){
   sampling_effort[i,3] <- sum(b$est_section_length[!duplicated(b$site_id)],na.rm=TRUE)
 }
 
+sampling_effort[sampling_effort==0] <- NA
+
 subgrid <- sf::st_sf(gr.50[gr.50_sub])
 subgrid$n_transect <- sqrt(sampling_effort[,1])
 subgrid$n_section <- sqrt(sampling_effort[,2])
@@ -116,7 +123,7 @@ subgrid$n_total_length <- sqrt(sampling_effort[,3])
 
 dev.new()
 par(mfrow=c(2,2))
-plot(subgrid)
+plot(subgrid, pal=rev(heat.colors(20)))
 plot(gr[cel_n], col = NA, border = 'red', lwd=1)
 plot(sf_e_clip$geometry, col='grey90', add = TRUE)
 plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
@@ -124,59 +131,121 @@ plot(section_sf$geometry[gr.section], pch = 20, cex = 0.8, col = 'cadetblue', ad
 plot(gr.50[gr.50_sub],col = NA, border = 'orange', lty=2, lwd=1, add = TRUE)
 
 
-transect_to_keep <- section_year_n[N >= 3, mean(N) == N, by = 'transect_id'][V1 == TRUE, unique(transect_id)]
-
-transect_length <- section_walk_dt[transect_id %in% transect_to_keep, sum(section_length), by =  c('year', 'transect_id')]
-summary(transect_length[,V1])
-summary(section_walk_dt[,section_length])
+# transect_to_keep <- section_year_n[N >= 3, mean(N) == N, by = 'transect_id'][V1 == TRUE, unique(transect_id)]
+#
+# transect_length <- section_walk_dt[transect_id %in% transect_to_keep, sum(section_length), by =  c('year', 'transect_id')]
+# summary(transect_length[,V1])
+# summary(section_walk_dt[,section_length])
 
 ### splitter function
+# this function find set of sections to merge (or a single section) to result with distance closest to the target value
+
 transect_splitter <- function(x, clip_value){
+
+    if(length(x)>=1){
     x <- cbind(x,seq_along(x))
     cs_x <- cumsum(x[order(x[,1],x[,2]),1])
     res <- order(x[,1],x[,2])[1:order(abs(cs_x-clip_value))[1]]
-    return(res)
+    }else{res <- NA}
+
+  return(res)
 }
-
-
 
 ### example
 expl_1 <- c(70, 90, 200, 230, 70, 430, 50, 110, 230, 50)
 expl_2 <- rep(50,16)
-sum(expl_1[transect_splitter(expl_1, 400)])
+expl_3 <- c(150)
+expl_4 <- NA
+sum(expl_1[transect_splitter(expl_1, 80)])
 sum(expl_2[transect_splitter(expl_2, 400)])
+sum(expl_3[transect_splitter(expl_3,80)])
+sum(expl_4[transect_splitter(expl_4,80)])
 ###  end
 
-tr_length <- 150 ## target length
+
+
+tr_length <- 250 ## target length
 tolerance <- 50 ## +- tolerance
 
-section_walk_dt[, year_trans_sect := paste(year, transect_id, section_id, sep='_')]
+dev.new()
+plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90')
+plot(section_sf$geometry[!is.na(section_sf$est_section_length)], pch = 20, cex = 0.8, col = 'cadetblue', add = TRUE)
+text(1818716,4231836,paste('section:',length(unique(section_sf$site_id[!is.na(section_sf$est_section_length)]))),pos=4)
+text(1818716,3891651,paste('transect:',length(unique(section_sf$transect_id[!is.na(section_sf$est_section_length)]))),pos=4)
 
-a <- data.table::copy(section_walk_dt[transect_id %in% transect_length[V1 >= (tr_length - tolerance), transect_id],
-                      section_id[transect_splitter(section_length, tr_length)],
-                      by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')])
 
-b <- data.table::copy(section_walk_dt[year_trans_sect %in% a$year_trans_sect,])
-b[, 'transect_split' := paste('tr', 1, tr_length, sep = '_')]
-# summary(b[, sum(section_length), by = c('year','transect_id')])
+f <- data.table::data.table()
+for (cel_n in seq_along(gr)){
 
-(added_to <- b[,.N] )
-i <- 2
-while(added_to > 1){
-c <- section_walk_dt[!year_trans_sect %in% b$year_trans_sect,][transect_id %in% transect_length[V1 >= (tr_length - tolerance), transect_id],
-                      section_id[transect_splitter(section_length, tr_length)],
-                      by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')]
+plot(gr, col = NA, border = 'orange')
+plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
 
-d <- data.table::copy(section_walk_dt[year_trans_sect %in% c$year_trans_sect,])
-d[, 'transect_split' := paste('tr', i, tr_length, sep = '_')]
-added_to <- d[,.N]
-i <- i + 1
-print(paste(i,':', added_to))
-b <- rbind(b, d)
+  gr.section <- unlist(sf::st_intersects(gr[cel_n],section_sf))
+  grid_data <- section_sf[gr.section,]
+  if (!length(grid_data$site_id)>=1){next()}
+
+  sf::st_geometry(grid_data) <- NULL
+  grid_data <- data.table::data.table(grid_data)
+  grid_data[, year_trans_sect := paste(year, transect_id, section_id, sep='_')]
+
+  for (tr_length in c(100,150,200,250,300,350,450,500)){
+
+    transect_length <- grid_data[, sum(est_section_length, na.rm=TRUE), by =  c('year', 'transect_id')]
+    tr_k <- transect_length[V1 >= (tr_length - tolerance), transect_id]
+    grid_data_gr <- grid_data[transect_id %in% tr_k, section_id[transect_splitter(est_section_length, tr_length)], by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')]
+    b <- data.table::copy(grid_data[paste(year, transect_id, section_id, sep='_') %in% grid_data_gr$year_trans_sect,])
+    b[, 'transect_split' := paste('tr', 1, tr_length, sep = '_')]
+    b[, gr_section_length := sum(est_section_length,na.rm = TRUE), by = c('year', 'transect_id')]
+
+    (added_to <- b[,.N] )
+
+    i <- 2
+      while(added_to > 1){
+      tr_ki <- data.table::copy(transect_length[V1 >= (tr_length - tolerance), transect_id])
+      c <- grid_data[!year_trans_sect %in% b$year_trans_sect,][transect_id %in% tr_ki,
+                            section_id[transect_splitter(est_section_length, tr_length)],
+                            by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')]
+
+      d <- data.table::copy(grid_data[year_trans_sect %in% c$year_trans_sect,])
+      d[, 'transect_split' := paste('tr', i, tr_length, sep = '_')]
+      d[, gr_section_length := sum(est_section_length,na.rm = TRUE), by = c('year', 'transect_id')]
+      added_to <- d[,.N]
+      i <- i + 1
+      print(paste(i,':', added_to))
+      b <- rbind(b, d)
+
+      }
+
+    e <- unique(b[,.(year,transect_id,transect_split,gr_section_length)])
+    if (!length(e[abs(gr_section_length - tr_length) <= tolerance,gr_section_length])>=1){next()}
+    f <- rbind(f, cbind(grid_cell = cel_n, tr_length = tr_length,e[abs(gr_section_length - tr_length) <= tolerance, sum(gr_section_length),by=year]))
+
+    # plot(e$gr_section_length - tr_length)
+    # abline(h = -tolerance, col = 'red', lty = 2)
+    # abline(h = tolerance, col = 'red', lty = 2)
+    # text(100, 35 * tolerance, col = 'blue', e[abs(gr_section_length - tr_length) <= tolerance, .N], pos = 4)
+    # text(100, 40 * tolerance, col = 'red', e[abs(gr_section_length - tr_length) > tolerance, .N], pos = 4)
+    # text(100, 30 * tolerance, col = 'magenta', paste('target length:',tr_length), pos = 4)
+  }
 }
 
+f[order(tr_length,year),]
+
+plot(
+f2 <- f[,mean(V1),by=.(tr_length,grid_cell)]
+f3 <- f2[,optimum:=max(V1),by=grid_cell][V1==optimum,]
+  ,type='l')
+
+plot(gr, col = NA, border = 'orange')
+plot(gr[f3$grid_cell],col=brewer.pal(8,'Spectral')[as.numeric(as.factor(f3$tr_length))],add=TRUE,key.set=1)
+
+table(f3$tr_length)
 
 e <- b[,sum(section_length), by = c('year', 'transect_id', 'transect_split')]
+
+
+
+
 
 hist(unique(e[V1 >= 100 & V1 <= 200, .(transect_id, transect_split, V1)])$V1)
 
