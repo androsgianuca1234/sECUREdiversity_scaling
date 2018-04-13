@@ -173,7 +173,7 @@ plot(section_sf$geometry[!is.na(section_sf$est_section_length)], pch = 20, cex =
 text(1818716,4231836,paste('section:',length(unique(section_sf$site_id[!is.na(section_sf$est_section_length)]))),pos=4)
 text(1818716,3891651,paste('transect:',length(unique(section_sf$transect_id[!is.na(section_sf$est_section_length)]))),pos=4)
 
-
+b_res <- data.table::data.table()
 f <- data.table::data.table()
 for (cel_n in seq_along(gr)){
 
@@ -207,7 +207,7 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
                             by = c('year', 'transect_id')][, year_trans_sect := paste(year, transect_id, V1, sep='_')]
 
       d <- data.table::copy(grid_data[year_trans_sect %in% c$year_trans_sect,])
-      d[, 'transect_split' := paste('tr', i, tr_length, sep = '_')]
+      d[, 'transect_split' := paste(tr_length, 'tr', i, sep = '_')]
       d[, gr_section_length := sum(est_section_length,na.rm = TRUE), by = c('year', 'transect_id')]
       added_to <- d[,.N]
       i <- i + 1
@@ -215,6 +215,8 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
       b <- rbind(b, d)
 
       }
+
+    b_res <-rbind(b_res,b)
 
     e <- unique(b[,.(year,transect_id,transect_split,gr_section_length)])
     if (!length(e[abs(gr_section_length - tr_length) <= tolerance,gr_section_length])>=1){next()}
@@ -229,18 +231,23 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
   }
 }
 
-f[order(tr_length,year),]
+saveRDS(b_res,'output/section_merging.rds')
+
 
 plot(
 f2 <- f[,mean(V1),by=.(tr_length,grid_cell)]
 f3 <- f2[,optimum:=max(V1),by=grid_cell][V1==optimum,]
   ,type='l')
 
-plot(gr, col = NA, border = 'orange')
-plot(gr[f3$grid_cell],col=brewer.pal(8,'Spectral')[as.numeric(as.factor(f3$tr_length))],add=TRUE,key.set=1)
-
-table(f3$tr_length)
-
+dev.new()
+par(mfrow=c(1,2))
+for (gc in seq_along(gr)){
+  if(!length(f[grid_cell==gc,V1])>=1){next}
+  plot(gr, col = NA, border = 'orange')
+  plot(gr[gc],col='magenta',add=TRUE)
+  plot(f[grid_cell==gc,mean(V1),by=tr_length],type='l',col='violetred')
+  Sys.sleep(1)
+}
 e <- b[,sum(section_length), by = c('year', 'transect_id', 'transect_split')]
 
 
