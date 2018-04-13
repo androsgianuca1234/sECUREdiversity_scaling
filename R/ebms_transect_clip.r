@@ -234,6 +234,8 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
 
 saveRDS(b_res,'output/section_merging.rds')
 
+## Q. do we need to merge the sections or could we just have sampled section to reach a specific lenght per area. This would involve not loosing any section and give more
+## opportunity to reach a specific length.
 #### End
 
 plot(
