@@ -37,7 +37,8 @@ section_walkQ <- 'SELECT DISTINCT
                   WHERE
                     EXTRACT(YEAR from v.visit_date) >= 2010 AND
                     EXTRACT(YEAR from v.visit_date) <= 2015 AND
-                    s.monitoring_type = \'2\'
+                    s.monitoring_type = \'2\' AND
+                    g.centroid_geom IS NOT NULL
                   ORDER BY
                     s.transect_id,
                     year,
@@ -54,7 +55,7 @@ data(Europe,package='tmap')
 sf_e <- sf::st_as_sf(Europe)
 sf_e <- sf::st_transform(sf_e,crs=3035)
 
-raster::drawExtent()
+# raster::drawExtent()
 
 bbox <- raster::extent(1480000,6534652,1241889,5756279)
 bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(bbox, 'SpatialPolygons')), 3035)
@@ -64,12 +65,16 @@ sf_e_clip <- sf::st_intersection(sf_e,bbox_sf)
 g.bbox <- raster::extent(2500000,5500000,1400000,5100000)
 g.bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(g.bbox, 'SpatialPolygons')), 3035)
 gr <- sf::st_make_grid(g.bbox_sf, cellsize = 250000, what = 'polygons')
-
+gr <- sf::st_make_grid(g.bbox_sf, cellsize = 10000, what = 'polygons')
 dev.new()
 plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90')
 plot(section_sf$geometry[!is.na(section_sf$est_section_length)], pch = 20, cex = 0.8, col = 'cadetblue', add = TRUE)
 text(1818716,4231836,paste('section:',length(unique(section_sf$site_id[!is.na(section_sf$est_section_length)]))),pos=4)
 text(1818716,3891651,paste('transect:',length(unique(section_sf$transect_id[!is.na(section_sf$est_section_length)]))),pos=4)
+
+dev.new()
+plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90')
+plot(section_sf$geometry[!is.na(section_sf$est_section_length)], pch = 20, cex = 0.8, col = 'cadetblue', add = TRUE)
 
 plot(gr, col = NA, border = 'orange', add = TRUE)
 plot(gr[29], col = NA, border = 'red', lwd=2, add = TRUE)
@@ -90,7 +95,7 @@ plot(section_sf$geometry[gr.section], pch = 20, cex = 0.8, col = 'orange', add =
 
 
 ## focus on a small box (eg. 79)
-cel_n <- 88
+cel_n <- 89
 gr.section <- unlist(sf::st_intersects(gr[cel_n],section_sf))
 dev.new()
 plot(gr[cel_n], col = NA, border = 'red', lwd=2, type='n')
@@ -233,7 +238,7 @@ plot(gr[cel_n], col = NA, border = 'red', lwd=2, add = TRUE)
 }
 
 saveRDS(b_res,'output/section_merging.rds')
-
+b_res <- readRDS('output/section_merging.rds')
 ## Q. do we need to merge the sections or could we just have sampled section to reach a specific lenght per area. This would involve not loosing any section and give more
 ## opportunity to reach a specific length.
 #### End
