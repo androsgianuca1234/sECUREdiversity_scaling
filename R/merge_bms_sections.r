@@ -139,6 +139,9 @@ if (!length(grid_data$site_id)>=1){next()}
 saveRDS(b_res,'output/section_merging.rds')
 
 ## keep merged section within 175-225m long
+tr_length <- 200
+tolerance <- 25
+b_res <- data.table::data.table(readRDS('output/section_merging.rds'))
 
 merged_section <- b_res[gr_section_length>=(tr_length-tolerance) & gr_section_length<=(tr_length+tolerance),]
 merged_section[ ,m_site_id := paste(transect_split,transect_id,sep='_')]
@@ -201,7 +204,7 @@ section_merged_grided_dt <- data.table::data.table(section_merged_grided)
 a <- section_merged_grided_dt[,.N,by=gr5]
 a <- section_merged_grided_dt[,.N,by=gr10]
 
-plot(gr.200[c(65:69)])
+plot(gr.200[128:131])
 plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90',add=TRUE)
 plot(gr.50,col=NA,border='grey50',lty=2,add=TRUE)
 plot(gr.100,col=NA,border='orange',lty=2,add=TRUE)
@@ -221,7 +224,7 @@ plot(gr.5[a$gr5[a$N>=1]],col=NA,border='orange',add=TRUE)
 plot(gr.5[a$gr5[a$N>=2]],col=NA,border='blue',add=TRUE)
 plot(gr.5[a$gr5[a$N>=3]],col=NA,border='red',add=TRUE)
 
-plot(gr.200[c(160:164)])
+plot(gr.200[c(110:113)])
 plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90',add=TRUE)
 plot(gr.50,col=NA,border='grey50',lty=2,add=TRUE)
 plot(gr.100,col=NA,border='orange',lty=2,add=TRUE)

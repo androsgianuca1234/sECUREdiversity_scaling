@@ -55,9 +55,17 @@ g.bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(g.bbox, 'SpatialPolygons')), 3035)
 gr.200 <- sf::st_make_grid(g.bbox_sf, cellsize = 200000, what = 'polygons')
 gr.100 <- sf::st_make_grid(g.bbox_sf, cellsize = 100000, what = 'polygons')
 gr.50 <- sf::st_make_grid(g.bbox_sf, cellsize = 50000, what = 'polygons')
-gr.25 <- sf::st_make_grid(g.bbox_sf, cellsize = 50000, what = 'polygons')
+gr.25 <- sf::st_make_grid(g.bbox_sf, cellsize = 25000, what = 'polygons')
+gr.20 <- sf::st_make_grid(g.bbox_sf, cellsize = 20000, what = 'polygons')
 gr.10 <- sf::st_make_grid(g.bbox_sf, cellsize = 10000, what = 'polygons')
 gr.5 <- sf::st_make_grid(g.bbox_sf, cellsize = 5000, what = 'polygons')
+#gr.1 <- sf::st_make_grid(g.bbox_sf, cellsize = 1000, what = 'polygons')
+
+# ### oli's special 1Km
+# merged_section_coord_sf$gr1 <- unlist(sf::st_intersects(merged_section_coord_sf,gr.1))
+# sf::st_geometry(merged_section_coord_sf) <- NULL
+# merged_section_coord_dt <- data.table::data.table(merged_section_coord_sf)
+# merged_section_coord_dt[, id := seq_len(.N), by = gr1]
 
 merged_section_coord_sf$gr5 <- unlist(sf::st_intersects(merged_section_coord_sf,gr.5))
 sf::st_geometry(merged_section_coord_sf) <- NULL
@@ -109,6 +117,7 @@ sf::st_write(sp_rich_5kmgrid_400m,'output/secure_5kmgrid.shp', delete_dsn=TRUE)
 sp_rich_5kmgrid_400m$gr_200 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.200))
 sp_rich_5kmgrid_400m$gr_100 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.100))
 sp_rich_5kmgrid_400m$gr_50 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.50))
+sp_rich_5kmgrid_400m$gr_20 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.20))
 sp_rich_5kmgrid_400m$gr_25 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.25))
 sp_rich_5kmgrid_400m$gr_10 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.10))
 
