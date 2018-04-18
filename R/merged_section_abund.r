@@ -34,6 +34,8 @@ site2merged_id <- readRDS('output/site2merged_id.rds')
 data.table::setkey(section_count_dt, site_id)
 data.table::setkey(site2merged_id, site_id)
 
+data.table::fwrite(data.frame(id=seq_along(unique(section_count_dt[,species])),species=unique(section_count_dt[order(species),species])),'output/secure_ebms_specieslist.csv')
+
 section_count_dt.2 <- merge(section_count_dt,site2merged_id[,.(site_id,merged_section_id)])
 
 section_count_seasontrim <- section_count_dt.2[month>=4 & month <= 9,]
@@ -78,6 +80,10 @@ section_max_abund_gr5_2sect <- merge(section_max_abund_gr5_2sect,merged_section_
 gr5_sp_assemblage_400m <- section_max_abund_gr5_2sect[,sum(V1),by=.(gr5,species)][order(gr5,species),]
 gr5_sp_richness_400m <- gr5_sp_assemblage_400m[,.N,by=gr5]
 
+unique(gr5_sp_assemblage_400m[,species])
+
+data.table::fwrite(gr5_sp_assemblage_400m,'output/gr5_sp_assemblage_400m_effort.csv')
+
 section_max_abund_gr5_3sect <- section_max_abund[merged_section_id %in% merged_section_3_gr5$merged_section_id,]
 data.table::setkey(section_max_abund_gr5_3sect,merged_section_id)
 data.table::setkey(merged_section_coord_dt,merged_section_id)
@@ -88,13 +94,30 @@ gr5_sp_richness_600m <- gr5_sp_assemblage_600m[,.N,by=gr5]
 
 dev.new()
 par(mfrow=c(2,1))
-hist(gr5_sp_richness_400m[,N])
-hist(gr5_sp_richness_600m[,N])
+hist(gr5_sp_richness_400m[,N],breaks=15)
+hist(gr5_sp_richness_600m[,N],breaks=15)
 
 sp_rich_5kmgrid_400m <- sf::st_sf(gr.5[gr5_sp_richness_400m$gr5])
 sp_rich_5kmgrid_400m$richness <- gr5_sp_richness_400m$N
+sp_rich_5kmgrid_400m$grid5_id  <- gr5_sp_richness_400m$gr5
 sp_rich_5kmgrid_600m <- sf::st_sf(gr.5[gr5_sp_richness_600m$gr5])
 sp_rich_5kmgrid_600m$richness <- gr5_sp_richness_600m$N
+
+sf::st_write(sp_rich_5kmgrid_400m,'output/secure_5kmgrid.shp', delete_dsn=TRUE)
+
+
+sp_rich_5kmgrid_400m$gr_200 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.200))
+sp_rich_5kmgrid_400m$gr_100 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.100))
+sp_rich_5kmgrid_400m$gr_50 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.50))
+sp_rich_5kmgrid_400m$gr_25 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.25))
+sp_rich_5kmgrid_400m$gr_10 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.10))
+
+sp_rich_5kmgrid_400m_df <- sp_rich_5kmgrid_400m
+sf::st_geometry(sp_rich_5kmgrid_400m_df) <- NULL
+data.table::fwrite(sp_rich_5kmgrid_400m_df,'output/grid5k_scaling.csv')
+
+sp_rich_5kmgrid_400m_dt <- data.table::data.table(sp_rich_5kmgrid_400m_df)
+
 
 dev.new()
 plot(sf::st_buffer(sp_rich_5kmgrid_400m,5000),border=NA,main='400m')
@@ -109,11 +132,22 @@ bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(bbox, 'SpatialPolygons')), 3035)
 sf_e_clip <- sf::st_intersection(sf_e,bbox_sf)
 
 dev.new()
-plot(gr.200)
+plot(gr.200[c(223:225,238:240)])
 plot(sf_e_clip$geometry, graticule = sf::st_crs(4326), axes = TRUE, col='grey90',add=TRUE)
+plot(gr.200[c(223:225,238:240)],border='orange',add=TRUE)
 plot(gr.50,col=NA,border='grey50',lty=2,add=TRUE)
 plot(gr.100,col=NA,border='orange',lty=2,add=TRUE)
 plot(gr.200,col=NA,border='red',lwd=2,add=TRUE)
 plot(sf::st_buffer(sp_rich_5kmgrid_400m,5000),border=NA)
 
 save.image('output/richness.rda')
+
+load('output/richness.rda')
+ls()
+
+
+## check Finland
+fin_5kg_grid <- unique(sp_rich_5kmgrid_400m_dt[gr_200%in%c(223:225,238:240),grid5_id])
+fin_sp_assemblages <- gr5_sp_assemblage_400m[gr5%in%fin_5kg_grid,]
+fin_sp_assemblages[,.N,by=gr5][order(N),]
+fin_sp_assemblages[gr5==366571,][order(species),]
