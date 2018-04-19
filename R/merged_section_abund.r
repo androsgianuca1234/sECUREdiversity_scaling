@@ -1,8 +1,20 @@
 R --vanilla
 
-dbconnect_param <- read.csv("data\\connect_file.csv", stringsAsFactors = FALSE)
-
+##====================================================================
+##
+## Script to extract species abundance per standardized sampling units
+## - standardize sampling units are sections of 200m +- 25m
+## - eBMS v.1.2 (build April 2018)
+##
+## Author: Reto Schmucki - retoschm@ceh.ac.uk
+## Date: 19/04/2018
+##
+##====================================================================
+R --vanilla
+set.seed(1234)
 library('RPostgreSQL')
+
+dbconnect_param <- read.csv("data\\connect_file.csv", stringsAsFactors = FALSE)
 
 dbcon <- dbConnect(dbDriver('PostgreSQL'),
                             dbname = 'ebms_v1_2',
@@ -11,6 +23,7 @@ dbcon <- dbConnect(dbDriver('PostgreSQL'),
                             user = dbconnect_param[1,1],
                             password = dbconnect_param[2,1])
 
+## Extract section level count from eBMS database.
 sectioncountQ <- 'SELECT DISTINCT
                     EXTRACT(YEAR from v.visit_date) as year,
                     EXTRACT(MONTH from v.visit_date) as month,
@@ -29,104 +42,135 @@ sectioncountQ <- 'SELECT DISTINCT
                     s.monitoring_type = \'2\' AND
                     sp.aggregate = FALSE;'
 
-section_count_dt <- data.table::data.table(dbGetQuery(dbcon,sectioncountQ))
+section_count_dt <- data.table::data.table(dbGetQuery(dbcon, sectioncountQ))
+
+data.table::fwrite(section_count_dt, 'output/sECUREdata/original_sectionlevel_count.csv')
+saveRDS(section_count_dt, 'output/sECUREdata/original_sectionlevel_count.rds')
+
+data.table::fwrite(data.frame(id = seq_along(unique(section_count_dt[, species])),
+                              species = unique(section_count_dt[order(species), species])),
+                              'output/sECUREdata/secure_ebms_specieslist.csv')
+
+## load standardized sampling units (200m) table, merging BMS sections.
+## result from "ebms_transect_clip.r"
+
 site2merged_id <- readRDS('output/site2merged_id.rds')
+data.table::fwrite(site2merged_id, 'output/sECUREdata/site2merged_id.csv')
+
 data.table::setkey(section_count_dt, site_id)
 data.table::setkey(site2merged_id, site_id)
+section_count_dt.2 <- merge(section_count_dt, site2merged_id[, .(site_id, merged_section_id)])
 
-data.table::fwrite(data.frame(id=seq_along(unique(section_count_dt[,species])),species=unique(section_count_dt[order(species),species])),'output/secure_ebms_specieslist.csv')
-
-section_count_dt.2 <- merge(section_count_dt,site2merged_id[,.(site_id,merged_section_id)])
-
+## restrict sampling season to April to September
 section_count_seasontrim <- section_count_dt.2[month>=4 & month <= 9,]
 
+## extract the maximum total annual abundance observed for each species between 2010 and 2015.
+## build a community per standardized sampling units (200m)
 section_max_abund <- section_count_seasontrim[,sum(count,na.rm=TRUE),by=.(year,month,day,merged_section_id,species)][,max(V1),
                               by=.(year,month,merged_section_id,species)][,max(V1),by=.(year,month,merged_section_id,
                               species)][,sum(V1),by=.(year,species,merged_section_id)][,max(V1),by=.(merged_section_id,
                               species)][order(merged_section_id,species),]
 
+## extract coordinates of the centroid of the standadized sampling units
 merged_section_coord <- unique(site2merged_id[,.(merged_section_id,m_x,m_y)])
 merged_section_coord_sf <- sf::st_as_sf(merged_section_coord,coords= c("m_x", "m_y"), crs = 3035, agr = "constant")
 
-## grid
+## build nested grids over Europe (resolution 200, 100, 50, 25, 10, 5km), projection EPGS:3035
 g.bbox <- raster::extent(2500000,5500000,1400000,5100000)
 g.bbox_sf <- sf::st_set_crs(sf::st_as_sfc(as(g.bbox, 'SpatialPolygons')), 3035)
-
 gr.200 <- sf::st_make_grid(g.bbox_sf, cellsize = 200000, what = 'polygons')
 gr.100 <- sf::st_make_grid(g.bbox_sf, cellsize = 100000, what = 'polygons')
 gr.50 <- sf::st_make_grid(g.bbox_sf, cellsize = 50000, what = 'polygons')
-gr.25 <- sf::st_make_grid(g.bbox_sf, cellsize = 25000, what = 'polygons')
 gr.20 <- sf::st_make_grid(g.bbox_sf, cellsize = 20000, what = 'polygons')
-gr.10 <- sf::st_make_grid(g.bbox_sf, cellsize = 10000, what = 'polygons')
 gr.5 <- sf::st_make_grid(g.bbox_sf, cellsize = 5000, what = 'polygons')
-#gr.1 <- sf::st_make_grid(g.bbox_sf, cellsize = 1000, what = 'polygons')
 
-# ### oli's special 1Km
-# merged_section_coord_sf$gr1 <- unlist(sf::st_intersects(merged_section_coord_sf,gr.1))
-# sf::st_geometry(merged_section_coord_sf) <- NULL
-# merged_section_coord_dt <- data.table::data.table(merged_section_coord_sf)
-# merged_section_coord_dt[, id := seq_len(.N), by = gr1]
-
+## assign the grid cell (5km) to the sampling units (200m)
 merged_section_coord_sf$gr5 <- unlist(sf::st_intersects(merged_section_coord_sf,gr.5))
 sf::st_geometry(merged_section_coord_sf) <- NULL
 merged_section_coord_dt <- data.table::data.table(merged_section_coord_sf)
+## add serial id to each sampling unit with a grid cell (e.g. 1,2,3,4,...)
 merged_section_coord_dt[, id := seq_len(.N), by = gr5]
 
-cell_w2 <- unique(merged_section_coord_dt[id>=2,gr5])
-keep_id_pergrid <- merged_section_coord_dt[gr5 %in% cell_w2,sample(id,2),by=gr5]
-merged_section_2_gr5 <- merged_section_coord_dt[paste(gr5,id,sep='_')%in%paste(keep_id_pergrid$gr5,keep_id_pergrid$V1,sep='_'),][order(gr5),]
+df_dt <- data.table::data.table( df )
+df_dt[,id := seq_len(.N),by =  ]
 
-cell_w3 <- unique(merged_section_coord_dt[id>=3,gr5])
-keep_id_pergrid <- merged_section_coord_dt[gr5 %in% cell_w3,sample(id,3),by=gr5]
-merged_section_3_gr5 <- merged_section_coord_dt[paste(gr5,id,sep='_')%in%paste(keep_id_pergrid$gr5,keep_id_pergrid$V1,sep='_'),][order(gr5),]
 
-section_max_abund_gr5_2sect <- section_max_abund[merged_section_id %in% merged_section_2_gr5$merged_section_id,]
-data.table::setkey(section_max_abund_gr5_2sect,merged_section_id)
-data.table::setkey(merged_section_coord_dt,merged_section_id)
-section_max_abund_gr5_2sect <- merge(section_max_abund_gr5_2sect,merged_section_coord_dt,all.x=TRUE)
+## select and randomly resample 2 sampling within each grid cell containing at least 2 units.
+nbr_sampling_unit <- 2
+cell_w2 <- unique(merged_section_coord_dt[id >= nbr_sampling_unit, gr5])
+keep_id_pergrid <- merged_section_coord_dt[gr5 %in% cell_w2, sample(id, nbr_sampling_unit), by = gr5]
+merged_section_2_gr5 <- merged_section_coord_dt[paste(gr5, id, sep='_') %in% paste(keep_id_pergrid$gr5, keep_id_pergrid$V1, sep = '_'), ][order(gr5), ]
 
-gr5_sp_assemblage_400m <- section_max_abund_gr5_2sect[,sum(V1),by=.(gr5,species)][order(gr5,species),]
-gr5_sp_richness_400m <- gr5_sp_assemblage_400m[,.N,by=gr5]
+## extract butterfly counts for the select sampling units (200m)
+section_max_abund_gr5_2sect <- section_max_abund[merged_section_id %in% merged_section_2_gr5$merged_section_id, ]
 
-unique(gr5_sp_assemblage_400m[,species])
+## add the ids of the 5km grid to the merged sections species data set...
+data.table::setkey(section_max_abund_gr5_2sect, merged_section_id)
+data.table::setkey(merged_section_coord_dt, merged_section_id)
+section_max_abund_gr5_2sect <- merge(section_max_abund_gr5_2sect, merged_section_coord_dt, all.x = TRUE)
 
-data.table::fwrite(gr5_sp_assemblage_400m,'output/gr5_sp_assemblage_400m_effort.csv')
+## sum the abundance across the 2 sampling units with a 5km grid cell
+gr5_sp_assemblage_400m <- section_max_abund_gr5_2sect[, sum(V1), by = .(gr5, species)][order(gr5, species), ]
 
-section_max_abund_gr5_3sect <- section_max_abund[merged_section_id %in% merged_section_3_gr5$merged_section_id,]
-data.table::setkey(section_max_abund_gr5_3sect,merged_section_id)
-data.table::setkey(merged_section_coord_dt,merged_section_id)
-section_max_abund_gr5_3sect <- merge(section_max_abund_gr5_3sect,merged_section_coord_dt,all.x=TRUE)
+data.table::fwrite(gr5_sp_assemblage_400m,'output/sECUREdata/gr5_sp_assemblage_400m_effort.csv')
+saveRDS(gr5_sp_assemblage_400m,'output/sECUREdata/gr5_sp_assemblage_400m_effort.rds')
 
-gr5_sp_assemblage_600m <- section_max_abund_gr5_3sect[,sum(V1),by=.(gr5,species)][order(gr5,species),]
-gr5_sp_richness_600m <- gr5_sp_assemblage_600m[,.N,by=gr5]
 
+v1 <- data.table::fread('output/gr5_sp_assemblage_400m_effort.csv')
+v2 <- gr5_sp_assemblage_400m
+
+r_v1 <- v1[, .N, by = gr5]
+r_v2 <- v2[, .N, by = gr5]
+data.table::setkey(r_v1, gr5)
+data.table::setkey(r_v2, gr5)
+c <- merge(r_v1, r_v2)
+plot(c$N.x,c$N.y)
+abline(0,1,add=TRUE)
+
+### EXPLORE DATA - species richness
+
+## calculate the number of species per 5km grid cell
+gr5_sp_richness_400m <- gr5_sp_assemblage_400m[, .N, by = gr5]
+
+## plot distribution of richness
 dev.new()
 par(mfrow=c(2,1))
 hist(gr5_sp_richness_400m[,N],breaks=15)
-hist(gr5_sp_richness_600m[,N],breaks=15)
 
+## richness to the 5km grid object, with grid id
 sp_rich_5kmgrid_400m <- sf::st_sf(gr.5[gr5_sp_richness_400m$gr5])
 sp_rich_5kmgrid_400m$richness <- gr5_sp_richness_400m$N
 sp_rich_5kmgrid_400m$grid5_id  <- gr5_sp_richness_400m$gr5
-sp_rich_5kmgrid_600m <- sf::st_sf(gr.5[gr5_sp_richness_600m$gr5])
-sp_rich_5kmgrid_600m$richness <- gr5_sp_richness_600m$N
 
-sf::st_write(sp_rich_5kmgrid_400m,'output/secure_5kmgrid.shp', delete_dsn=TRUE)
+sf::st_write(sp_rich_5kmgrid_400m,'output/secure_5kmgrid.shp', delete_dsn=TRUE
 
 
+## LINK nested grid cell ids
 sp_rich_5kmgrid_400m$gr_200 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.200))
 sp_rich_5kmgrid_400m$gr_100 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.100))
 sp_rich_5kmgrid_400m$gr_50 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.50))
-sp_rich_5kmgrid_400m$gr_20 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.20))
 sp_rich_5kmgrid_400m$gr_25 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.25))
+sp_rich_5kmgrid_400m$gr_20 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.20))
 sp_rich_5kmgrid_400m$gr_10 <- unlist(sf::st_intersects(sf::st_buffer(sp_rich_5kmgrid_400m,-1),gr.10))
 
 sp_rich_5kmgrid_400m_df <- sp_rich_5kmgrid_400m
 sf::st_geometry(sp_rich_5kmgrid_400m_df) <- NULL
+sp_rich_5kmgrid_400m_dt <- data.table::data.table(sp_rich_5kmgrid_400m_df)
+sp_rich_5kmgrid_400m_dt
 data.table::fwrite(sp_rich_5kmgrid_400m_df,'output/grid5k_scaling.csv')
 
-sp_rich_5kmgrid_400m_dt <- data.table::data.table(sp_rich_5kmgrid_400m_df)
+scaling_old <- data.table::fread('output/grid5k_scaling_old.csv')
 
+a <- sp_rich_5kmgrid_400m_dt[,.(grid5_id,richness)]
+b <- scaling_old[,.(grid5_id,richness)]
+data.table::setkey(a,grid5_id)
+data.table::setkey(b,grid5_id)
+
+c <- merge(a,b)
+c
+
+plot(c$richness.x,c$richness.y)
+abline(0,1,add=TRUE)
 
 dev.new()
 plot(sf::st_buffer(sp_rich_5kmgrid_400m,5000),border=NA,main='400m')
@@ -156,6 +200,9 @@ ls()
 
 
 ## check Finland
+
+sp_rich_5kmgrid_400m_dt <- data.table::data.table(sp_rich_5kmgrid_400m_df)
+
 fin_5kg_grid <- unique(sp_rich_5kmgrid_400m_dt[gr_200%in%c(223:225,238:240),grid5_id])
 fin_sp_assemblages <- gr5_sp_assemblage_400m[gr5%in%fin_5kg_grid,]
 fin_sp_assemblages[,.N,by=gr5][order(N),]
