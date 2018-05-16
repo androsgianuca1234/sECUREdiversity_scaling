@@ -29,8 +29,9 @@ section_walkQ <- 'SELECT DISTINCT
                     LEFT JOIN ebms.m_visit as v ON s.transect_id = v.transect_id
                     LEFT JOIN ebms.m_site_geo as g ON s.site_id = g.site_id
                   WHERE
-                    EXTRACT(YEAR from v.visit_date) >= 2010 AND
+                    EXTRACT(YEAR from v.visit_date) >= 1990 AND
                     EXTRACT(YEAR from v.visit_date) <= 2015 AND
+                    s.bms_id IN (\'UKBMS\',\'NLBMS\',\'FIBMS\',\'ES-CTBMS\') AND
                     s.monitoring_type = \'2\' AND
                     g.centroid_geom IS NOT NULL
                   ORDER BY
@@ -136,12 +137,12 @@ if (!length(grid_data$site_id)>=1){next()}
     }
   }
 
-saveRDS(b_res,'output/section_merging.rds')
+saveRDS(b_res,'output/section_merging_v2.rds')
 
 ## keep merged section within 175-225m long
 tr_length <- 200
 tolerance <- 25
-b_res <- data.table::data.table(readRDS('output/section_merging.rds'))
+b_res <- data.table::data.table(readRDS('output/section_merging_v2.rds'))
 
 merged_section <- b_res[gr_section_length>=(tr_length-tolerance) & gr_section_length<=(tr_length+tolerance),]
 merged_section[ ,m_site_id := paste(transect_split,transect_id,sep='_')]
@@ -159,16 +160,16 @@ site2merged_id <- unique(section_walk_dt.2[,.(site_id,transect_id,transect_split
 site2merged_id[,merged_section_length:=sum(est_section_length),.(transect_id,transect_split)]
 site2merged_id[,merged_section_id:=paste(transect_id,transect_split,sep='_')]
 site2merged_id <- site2merged_id[order(merged_section_id),]
-saveRDS(site2merged_id,'output/site2merged_id.rds')
+saveRDS(site2merged_id,'output/site2merged_id_v2.rds')
 
 section_walk_merged <- unique(section_walk_dt.2[,.(transect_id,transect_split,m_x,m_y)])
 section_merged_sf <- sf::st_as_sf(section_walk_dt.2,coords= c("m_x", "m_y"), crs = 3035, agr = "constant")
 section_merged_sf_u <- sf::st_as_sf(section_walk_merged,coords= c("m_x", "m_y"), crs = 3035, agr = "constant")
 
-saveRDS(section_merged_sf,'output/section_merged_sf.rds')
+saveRDS(section_merged_sf,'output/section_merged_sf_v2.rds')
 
 ## plot standardized sampling plot
-section_merged_sf <- readRDS('output/section_merged_sf.rds')
+section_merged_sf <- readRDS('output/section_merged_sf_v2.rds')
 
 data(Europe, package = 'tmap')
 sf_e <- sf::st_as_sf(Europe)
